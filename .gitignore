@@ -1,2 +1,4 @@
 python-backend/.env
 myOwn/node_modules
+.venv
+python-backend/__pycache__

@@ -78,7 +78,7 @@ const YouTube: React.FC = () => {
     try {
       // Send POST request using axios
       const response = await axios.post(
-        "http://192.168.1.5:3000/youtube/downloadVideo",
+        "http://192.168.1.5:8000/youtube/downloadVideo",
         {
           url: trimmedUrl,
           quality: quality,

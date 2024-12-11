@@ -1,45 +1,67 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 import yt_dlp
 import smtplib
 from dotenv import load_dotenv
 import os
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-app = Flask(__name__)
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class EmailRequest(BaseModel):
+    email: str
+    name: str
+    department: str
+    year: str
+    startDate: str
+    endDate: str
+    leaveDays: str
+
+class VideoRequest(BaseModel):
+    url: str
+    quality: str
+    type: str
 
 def send_email(sender_email, subject, body, recipient_email):
     try:
         sender_password = os.getenv("password")
         
         if not sender_password:
-            return "Email is Not Sent", 400
-
+            raise HTTPException(status_code=400, detail="Email password not found")
+        
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(sender_email, sender_password)
             server.sendmail(sender_email, recipient_email, f"Subject: {subject}\n\n{body}")
             server.close()
-        
-        return "Email sent successfully!", 200
-    except Exception as e:
-        return "Email is Not Sent", 400
-    
-@app.route("/email/send-email",methods=["POST"])
-def get_email_details():
-    try:
-        data=request.get_json()
-        print(data)
-        sender_email = data.get("email")  
-        name = data.get("name")
-        department = data.get("department")
-        year = data.get("year")
-        start_date = data.get("startDate")
-        end_date = data.get("endDate")
-        leave_days = data.get("leaveDays")
 
-        if(sender_email=='' or name=='' or department=='' or year=='' or start_date=='' or end_date=='' or leave_days==''):
-            return jsonify({"message":"Need Full details"}),400
+        return "Email sent successfully!"
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Email is not sent")
+
+@app.post("/email/send-email")
+async def get_email_details(email_request: EmailRequest):
+    try:
+        sender_email = email_request.email
+        name = email_request.name
+        department = email_request.department
+        year = email_request.year
+        start_date = email_request.startDate
+        end_date = email_request.endDate
+        leave_days = email_request.leaveDays
+
+        if '' in [sender_email, name, department, year, start_date, end_date, leave_days]:
+            raise HTTPException(status_code=400, detail="Need Full details")
 
         subject = "Request For leave"
         body = f"""
@@ -52,38 +74,35 @@ Total Leave Days: {leave_days}
 
         recipient_email = "leaverequestpremiummess@gmail.com"
 
-        status, code = send_email(sender_email, subject, body, recipient_email)
-        return jsonify({"message": status}), code
+        status = send_email(sender_email, subject, body, recipient_email)
+        return {"message": status}
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
-def get_low_download_url(url,type_video):
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_low_download_url(url, type_video):
     try:
         opts_options = {
             'format': 'best',
-            'noplaylist':True,
-            'quiet':True
+            'noplaylist': True,
+            'quiet': True
         }
-    
-        if(type_video=="playlist"):
-            opts_options['noplaylist']=False
+
+        if type_video == "playlist":
+            opts_options['noplaylist'] = False
 
         with yt_dlp.YoutubeDL(opts_options) as ydl_video:
             video_info = ydl_video.extract_info(url, download=False)
 
-        if video_info==[] or video_info=={}:
-            return jsonify({"message":"Video not found"}),400
-        
+        if not video_info:
+            raise HTTPException(status_code=400, detail="Video not found")
+
         video_url = None
-        audio_url = None
         subtitle_url = None
-        title_url=None
+        title_url = None
 
         if type_video == "single":
             video_download_url = video_info.get("url")
-            
-            # Get subtitles URL (if available)
             subtitle_url = None
             if 'automatic_captions' in video_info:
                 captions = video_info['automatic_captions'].get('en', [])
@@ -91,145 +110,125 @@ def get_low_download_url(url,type_video):
                     if caption['ext'] == 'vtt':
                         subtitle_url = caption['url']
 
-            return jsonify({
-                "title_url":video_info.get("title"),
-                "video_url": video_download_url,
-                "audio_url": None,  
-                "subtitle_url": subtitle_url
-            })
-
-
+            return {"title_url": video_info.get("title"),
+                    "video_url": video_download_url,
+                    "audio_url": None,
+                    "subtitle_url": subtitle_url}
         else:
             video_url = []
             subtitle_url = []
-            title_url=[]
+            title_url = []
 
             if "entries" in video_info:
-                for i in range(len(video_info["entries"])):
-                    title_url.append(video_info["entries"][i]["title"])
-                    video_url.append(video_info["entries"][i]["url"])
+                for entry in video_info["entries"]:
+                    title_url.append(entry["title"])
+                    video_url.append(entry["url"])
 
-                    captions=video_info["entries"][i].get('automatic_captions', {}).get('en-orig', [])
-                    subtitle=None
+                    captions = entry.get('automatic_captions', {}).get('en-orig', [])
+                    subtitle = None
                     for caption in captions:
-                        if(caption["ext"]=="vtt"):
-                            subtitle=caption["url"]
+                        if caption["ext"] == "vtt":
+                            subtitle = caption["url"]
                     subtitle_url.append(subtitle)
 
-            return jsonify({
-                "title_url":title_url,
-                "video_url": video_url,
-                "audio_url": None,  
-                "subtitle_url": subtitle_url
-            })
-    
-    except Exception as e:
-        return str(e)
+            return {"title_url": title_url, "video_url": video_url, "audio_url": None, "subtitle_url": subtitle_url}
 
-def get_download_url(url,type_video):
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def get_download_url(url, type_video):
     try:
         video_opts = {
             'format': 'bestvideo/best',
-            'noplaylist':True,
-            'quiet':True,
-            'subtitleslangs': ['en'],  
-            'writesubtitles': True, 
+            'noplaylist': True,
+            'quiet': True,
+            'subtitleslangs': ['en'],
+            'writesubtitles': True,
             'allsubtitles': True,
         }
 
-        audio_opts={
-            'format':'bestaudio/best',
-            'noplaylist':True,
-            'quiet':True
+        audio_opts = {
+            'format': 'bestaudio/best',
+            'noplaylist': True,
+            'quiet': True
         }
 
-        if(type_video=="playlist"):
-            video_opts['noplaylist']=False
-            audio_opts['noplaylist']=False
+        if type_video == "playlist":
+            video_opts['noplaylist'] = False
+            audio_opts['noplaylist'] = False
 
         with yt_dlp.YoutubeDL(video_opts) as ydl_video:
             video_info = ydl_video.extract_info(url, download=False)
-        
+
         with yt_dlp.YoutubeDL(audio_opts) as ydl_audio:
             audio_info = ydl_audio.extract_info(url, download=False)
 
-        if video_info==[] or video_info=={}:
-            return jsonify({"message":"Video not found"}),400
-        
+        if not video_info:
+            raise HTTPException(status_code=400, detail="Video not found")
+
         video_url = None
         audio_url = None
         subtitle_url = None
-        title_url=None
+        title_url = None
 
-        if(type_video=="single"):
-            subtitle=None
-            captions=video_info.get('automatic_captions', {}).get('en-orig', [])
+        if type_video == "single":
+            subtitle = None
+            captions = video_info.get('automatic_captions', {}).get('en-orig', [])
 
             for caption in captions:
-                if(caption["ext"]=="vtt"):
-                    subtitle=caption["url"]
+                if caption["ext"] == "vtt":
+                    subtitle = caption["url"]
 
-            return jsonify({
-                "title_url":video_info.get("title"),
-                "video_url":video_info.get('url'),
-                "audio_url":audio_info.get("url"),
-                "subtitle_url":subtitle
-            })
-        
+            return {"title_url": video_info.get("title"),
+                    "video_url": video_info.get('url'),
+                    "audio_url": audio_info.get("url"),
+                    "subtitle_url": subtitle}
         else:
-            if "entries" in video_info:
-                title_url=[]
-                video_url=[]
-                audio_url=[]
-                subtitle_url=[]
-                
-                for i in range(len(video_info["entries"])):
-                    title_url.append(video_info["entries"][i]["title"])
-                    video_url.append(video_info["entries"][i]["url"])
-                    audio_url.append(audio_info["entries"][i]["url"])
-                    captions=video_info["entries"][i].get('automatic_captions', {}).get('en-orig', [])
-                    subtitle=None
-                    for caption in captions:
-                        if(caption["ext"]=="vtt"):
-                            subtitle=caption["url"]
-                    subtitle_url.append(subtitle)
-                        
-            
-            return jsonify({
-                "title_url":title_url,
-                "video_url":video_url,
-                "audio_url":audio_url,
-                "subtitle_url":subtitle_url
-            })
+            title_url = []
+            video_url = []
+            audio_url = []
+            subtitle_url = []
 
-    
+            for i in range(len(video_info["entries"])):
+                title_url.append(video_info["entries"][i]["title"])
+                video_url.append(video_info["entries"][i]["url"])
+                audio_url.append(audio_info["entries"][i]["url"])
+
+                captions = video_info["entries"][i].get('automatic_captions', {}).get('en-orig', [])
+                subtitle = None
+                for caption in captions:
+                    if caption["ext"] == "vtt":
+                        subtitle = caption["url"]
+                subtitle_url.append(subtitle)
+
+            return {"title_url": title_url,
+                    "video_url": video_url,
+                    "audio_url": audio_url,
+                    "subtitle_url": subtitle_url}
+
     except Exception as e:
-        return jsonify({str(e)}),400
+        raise HTTPException(status_code=400, detail=str(e))
 
-@app.route('/youtube/downloadVideo', methods=['POST'])
-def download_url():
-    data = request.get_json()
-    video_url = data.get('url')
-    quality = data.get('quality')
-    type_video=data.get("type")
+@app.post('/youtube/downloadVideo')
+async def download_url(video_request: VideoRequest):
+    video_url = video_request.url
+    quality = video_request.quality
+    type_video = video_request.type
 
     if not video_url:
-        return jsonify({"error": "URL is required"}), 400
+        raise HTTPException(status_code=400, detail="URL is required")
 
     try:
-        result=None
-        if(quality=="high"):
-            result = get_download_url(video_url,type_video)
+        result = None
+        if quality == "high":
+            result = get_download_url(video_url, type_video)
         else:
-            result=get_low_download_url(video_url,type_video)
-        
-        if result!=None:
-            return result, 200
+            result = get_low_download_url(video_url, type_video)
+
+        if result:
+            return result
         else:
-            return jsonify({"error": "Failed to fetch download url"}), 400
+            raise HTTPException(status_code=400, detail="Failed to fetch download url")
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000)
