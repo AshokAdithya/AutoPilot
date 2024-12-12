@@ -18,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class EmailRequest(BaseModel):
     email: str
     name: str
@@ -48,6 +49,10 @@ def send_email(sender_email, subject, body, recipient_email):
         return "Email sent successfully!"
     except Exception as e:
         raise HTTPException(status_code=400, detail="Email is not sent")
+
+@app.get("/")
+async def welcome_abord():
+    return "Welcome, abord"
 
 @app.post("/email/send-email")
 async def get_email_details(email_request: EmailRequest):
@@ -85,7 +90,10 @@ def get_low_download_url(url, type_video):
         opts_options = {
             'format': 'best',
             'noplaylist': True,
-            'quiet': True
+            'quiet': True,
+            'throttlerate': '50K',  
+            'sleep_interval': 2,
+            
         }
 
         if type_video == "playlist":
@@ -145,6 +153,8 @@ def get_download_url(url, type_video):
             'subtitleslangs': ['en'],
             'writesubtitles': True,
             'allsubtitles': True,
+            'throttlerate': '50K',
+            'sleep_interval': 2,
         }
 
         audio_opts = {

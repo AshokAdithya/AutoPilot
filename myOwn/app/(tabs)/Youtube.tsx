@@ -17,6 +17,7 @@ import axios from "axios";
 const YouTube: React.FC = () => {
   const [url, setUrl] = useState("");
   const [group, setGroup] = useState("single");
+  const [ipAddress, setIpAddress] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [titleUrl, setTitleUrl] = useState<string>("");
   const [videoUrl, setVideoUrl] = useState<string>("");
@@ -73,12 +74,14 @@ const YouTube: React.FC = () => {
       return;
     }
 
+    const trimmedIp = ipAddress.trim();
+
     setIsLoading(true);
 
     try {
       // Send POST request using axios
       const response = await axios.post(
-        "http://192.168.1.5:8000/youtube/downloadVideo",
+        `http://${trimmedIp}:8000/youtube/downloadVideo`,
         {
           url: trimmedUrl,
           quality: quality,
@@ -124,6 +127,12 @@ const YouTube: React.FC = () => {
     Linking.openURL(url);
   };
 
+  const handleCancel = () => {
+    setNull();
+    setIsLoading(false);
+    Alert.alert("Cancelled", "The download process has been cancelled.");
+  };
+
   const renderPlaylistItem = ({
     item,
     index,
@@ -164,6 +173,15 @@ const YouTube: React.FC = () => {
   return (
     <View style={styles.screen}>
       <Text style={styles.header}>YouTube Video Downloader</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Enter Your IP Address"
+        value={ipAddress}
+        onChangeText={setIpAddress}
+        placeholderTextColor="#bbb"
+      />
+
       <TextInput
         style={styles.input}
         placeholder="Enter YouTube URL"
@@ -206,7 +224,12 @@ const YouTube: React.FC = () => {
       <View style={styles.buttonSpacing}></View>
 
       {isLoading && (
-        <Text style={styles.singleText}>Getting Data from the Server...</Text>
+        <>
+          <Text style={styles.singleText}>Getting Data from the Server...</Text>
+          <View style={styles.buttonDiv}>
+            <Button title="Cancel" onPress={handleCancel} color="#f44336" />
+          </View>
+        </>
       )}
 
       {group === "single" && (

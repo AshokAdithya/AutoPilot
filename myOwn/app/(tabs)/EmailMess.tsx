@@ -38,6 +38,7 @@ const EmailMess = () => {
   }, []);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [ipAddress, setIpAddress] = useState<string>("");
   const [email, setEmail] = useState("ashokadithya2310949@ssn.edu.in");
   const [name, setName] = useState("Ashok Adithya L");
   const [department, setDepartment] = useState("B.Tech. IT");
@@ -113,8 +114,10 @@ const EmailMess = () => {
                 leaveDays: leaveDays,
               };
 
+              const trimmedIp = ipAddress.trim();
+
               const response = await axios.post(
-                "http://192.168.1.5:8000/email/send-email",
+                `http://${trimmedIp}:8000/email/send-email`,
                 formData
               );
 
@@ -137,6 +140,14 @@ const EmailMess = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Leave Application</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Enter Your IP Address"
+        value={ipAddress}
+        onChangeText={setIpAddress}
+        placeholderTextColor="#bbb"
+      />
 
       <Text style={styles.label}>Email</Text>
       <TextInput
