@@ -5,6 +5,7 @@ import smtplib
 import os
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import ffmpeg
 
 app = FastAPI()
 
@@ -83,6 +84,13 @@ Total Leave Days: {leave_days}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def convert_m3u8_to_mp4(m3u8_url, output_file):
+    try:
+        ffmpeg.input(m3u8_url).output(output_file, c='copy', bsfa='aac_adtstoasc').run()
+        print(f"Conversion successful! File saved as {output_file}")
+    except ffmpeg.Error as e:
+        print("An error occurred during conversion:", e.stderr.decode())
 
 def get_low_download_url(url, type_video):
     try:
@@ -181,6 +189,9 @@ def get_download_url(url, type_video):
         title_url = None
 
         if type_video == "single":
+            video_download_url=video_info.get('url')
+            if(video_download_url.endswith(".m3u8")):
+                video_download_url=convert_m3u8_to_mp4(video_download_url,"video.mp4")
             subtitle = None
             captions = video_info.get('automatic_captions', {}).get('en-orig', [])
 
@@ -189,7 +200,7 @@ def get_download_url(url, type_video):
                     subtitle = caption["url"]
 
             return {"title_url": video_info.get("title"),
-                    "video_url": video_info.get('url'),
+                    "video_url": video_download_url,
                     "audio_url": audio_info.get("url"),
                     "subtitle_url": subtitle}
         else:
@@ -220,7 +231,6 @@ def get_download_url(url, type_video):
 
 @app.post('/youtube/downloadVideo')
 async def download_url(video_request: VideoRequest):
-    print("hi")
     video_url = video_request.url
     quality = video_request.quality
     type_video = video_request.type
@@ -244,4 +254,4 @@ async def download_url(video_request: VideoRequest):
 
                 
 if  __name__=="__main__":
-    uvicorn.run("main:app",host="0.0.0.0",port=8000)
+    uvicorn.run("app:app",host="0.0.0.0",port=8000)
